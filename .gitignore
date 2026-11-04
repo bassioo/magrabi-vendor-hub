@@ -5,3 +5,4 @@ data/uploads
 .env
 .env.local
 *.log
+docs/screenshots/failure.png
