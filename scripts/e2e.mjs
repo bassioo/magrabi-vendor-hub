@@ -13,7 +13,7 @@ const BASE = `http://localhost:${PORT}`;
 const data = mkdtempSync(join(tmpdir(), 'vendorhub-e2e-'));
 const shots = join(root, 'docs', 'screenshots');
 mkdirSync(shots, { recursive: true });
-const SAMPLES = '/home/user/deliverables/261023 - C - Vendor Bridge Demo - Sample Documents';
+const SAMPLES = process.env.SAMPLES_DIR || join(root, 'data', 'sample-documents');
 // Pass buffers, not paths: headless Chromium drops file paths that contain non-ASCII characters (the folders use a middle dot).
 const sample = (folder, file) => ({ name: file, mimeType: file.endsWith('.pdf') ? 'application/pdf' : 'image/png', buffer: readFileSync(join(SAMPLES, folder, file)) });
 
