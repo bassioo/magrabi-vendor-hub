@@ -1,4 +1,5 @@
 // MAGRABi Vendor Hub API. `createApp()` for tests; listens when run directly.
+import { requestContext } from './lib/requestContext.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -50,8 +51,12 @@ export function createApp(db: DB = openDatabase()) {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
-  app.use(cors({ origin: [config.publicUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'], credentials: true }));
+  app.use(requestContext);
+  // PUBLIC_URL=auto: allow embedding (hosted previews) and cross-origin resource loads; otherwise keep the strict defaults.
+  app.use(helmet(config.publicUrlAuto
+    ? { contentSecurityPolicy: false, frameguard: false, crossOriginOpenerPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }
+    : { contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
+  app.use(cors({ origin: config.publicUrlAuto ? true : [config.publicUrl, 'http://localhost:5173', 'http://127.0.0.1:5173'], credentials: true }));
   if (process.env.NODE_ENV !== 'test') app.use(pinoHttp({ logger: log, autoLogging: { ignore: (req) => { const u = req.url ?? ''; return u.startsWith('/assets') || u === '/api/health' || u.startsWith('/files/') || u.startsWith('/samples/') || /\.(js|css|png|jpg|svg|woff2?|ico|map)(\?|$)/.test(u); } } }));
   app.use(express.json({ limit: '1mb' }));
   app.use(originCheck);

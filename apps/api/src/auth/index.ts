@@ -1,4 +1,5 @@
 // Staff authentication: magic links + session cookie. Vendors never log in; they hold an invite token.
+import { requestIsSecure } from '../lib/requestContext.js';
 import type { NextFunction, Request, Response } from 'express';
 import { parse as parseCookie, serialize } from 'cookie';
 import type { Country, Role, User, Vendor } from '@vendorhub/shared';
@@ -19,7 +20,9 @@ declare module 'express-serve-static-core' {
 export function startSession(db: DB, res: Response, user: User): void {
   const token = randomToken(32);
   insertSession(db, sha256(token), user.id, addDays(nowIso(), SESSION_DAYS));
-  res.setHeader('Set-Cookie', serialize(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: config.publicUrl.startsWith('https'), path: '/', maxAge: SESSION_DAYS * 86400 }));
+  const secure = requestIsSecure();
+  // Behind a hosted preview the app may run inside a frame on another site: SameSite=None (secure only) keeps sign-in working there.
+  res.setHeader('Set-Cookie', serialize(COOKIE, token, { httpOnly: true, sameSite: config.publicUrlAuto && secure ? 'none' : 'lax', secure, path: '/', maxAge: SESSION_DAYS * 86400 }));
 }
 export function endSession(db: DB, req: Request, res: Response): void {
   const token = readCookie(req);

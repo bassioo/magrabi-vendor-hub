@@ -1,4 +1,5 @@
 // The onboarding workflow: invites, review transitions, decisions. Every state change writes to the audit trail.
+import { publicBase } from '../lib/requestContext.js';
 import { COUNTRIES, COUNTRY_ORDER, checkSummaryText, reviewChecks, type Country, type Email, type ReviewSummary, type User, type Vendor } from '@vendorhub/shared';
 import { config } from '../config.js';
 import { addAudit, findOpenInviteByEmail, getCountryProfile, getInviteTokenEnc, getSettings, getVendor, insertVendor, listAudit, listDocuments, listRecentAudit, listRegistryChecks, listSapVendors, listVendors, setInviteToken, updateVendor, upsertSapVendor, type DB } from '../db/index.js';
@@ -28,7 +29,7 @@ export function currentInviteLink(db: DB, vendorId: string): string | undefined 
   return token ? vendorLinkFor(token) : undefined;
 }
 
-export function vendorLinkFor(token: string): string { return `${config.publicUrl}/v/${token}`; }
+export function vendorLinkFor(token: string): string { return `${publicBase()}/v/${token}`; }
 
 /** Creates (or reuses) an invite and emails the link. Returns the plain token once; only its hash is stored. */
 export async function invite(db: DB, by: User, input: { email: string; country: Country; category: string; lang?: 'en' | 'ar' }): Promise<{ vendor: Vendor; token: string; reused: boolean }> {

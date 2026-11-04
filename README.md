@@ -6,6 +6,12 @@ Vendor onboarding for MAGRABi across seven markets (KSA, UAE, Egypt, Kuwait, Qat
 
 This is the production codebase. The earlier clickable demo lives in `magrabi-vendor-bridge-demo` and stays as the team's review version.
 
+## Open it without installing anything
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/bassioo/magrabi-vendor-hub)
+
+One click gives you a public showcase copy in demo mode (free plan). Step by step, with a 10-minute showcase script: `docs/HOW-TO-OPEN-AND-SHOWCASE.md`.
+
 ## Run locally (demo mode, 2 minutes)
 
 ```bash

@@ -1,0 +1,35 @@
+# Go-live deploy on Render: persistent disk for the database and uploaded documents, live mode.
+# Rename this file to render.yaml on the branch you deploy from, or create the service manually with these values.
+services:
+  - type: web
+    name: magrabi-vendor-hub
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: vendorhub-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: APP_MODE
+        value: live
+      - key: PUBLIC_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: WATHQ_API_KEY
+        sync: false

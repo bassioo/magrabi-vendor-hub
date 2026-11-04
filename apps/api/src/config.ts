@@ -25,7 +25,8 @@ const env = (k: string, d = ''): string => (process.env[k] ?? d).trim();
 export const config = {
   mode: (env('APP_MODE', 'demo') === 'live' ? 'live' : 'demo') as 'demo' | 'live',
   port: Number(env('PORT', '8787')),
-  publicUrl: env('PUBLIC_URL', 'http://localhost:5173').replace(/\/$/, ''),
+  publicUrl: (env('PUBLIC_URL', 'http://localhost:5173') === 'auto' ? 'http://localhost:8787' : env('PUBLIC_URL', 'http://localhost:5173')).replace(/\/$/, ''),
+  publicUrlAuto: env('PUBLIC_URL', '') === 'auto', // links and cookies follow the request's own address
   dataDir: path.resolve(env('DATA_DIR', './data')),
   sessionSecret: env('SESSION_SECRET', 'dev-only-secret-change-me'),
   adminEmail: env('ADMIN_EMAIL', 'procurement@magrabi.example').toLowerCase(),
