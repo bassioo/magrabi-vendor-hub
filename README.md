@@ -23,7 +23,7 @@ cp .env.example .env          # set APP_MODE=live, PUBLIC_URL, SESSION_SECRET, A
 docker compose up -d --build  # http://localhost:8787
 ```
 
-Or deploy with the included `render.yaml` (Render), or any Docker host with a persistent disk mounted at `/data`. See `docs/GO-LIVE-CHECKLIST.md` for what to prepare, and `docs/ARCHITECTURE.md` for how it fits together.
+Or pull the published image `ghcr.io/bassioo/magrabi-vendor-hub:latest`, deploy with the included `render.yaml` (Render), or use any Docker host with a persistent disk mounted at `/data`. See `docs/GO-LIVE-CHECKLIST.md` for what to prepare, `docs/RUNBOOK.md` for operating it, `docs/SECURITY.md` for the security model, and `docs/ARCHITECTURE.md` for how it fits together.
 
 ## Commands
 
@@ -47,6 +47,7 @@ Everything is an environment variable; see `.env.example`. The only required val
 apps/api         Express API, SQLite, jobs, adapters
 apps/web         React app (staff console + vendor side)
 packages/shared  Types and rules used by both
-docs/            API contract, architecture, go-live checklist
-data/samples     Fictional sample documents for demo mode
+docs/            API contract, architecture, runbook, security notes, go-live checklist
+data/samples     Sample images used by demo mode
+data/sample-documents  Fictional vendor document sets (PDF + PNG) to test uploads
 ```
