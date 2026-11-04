@@ -144,6 +144,8 @@ export interface Settings {
   inviteValidDays: number;
   reminderAfterDays: number;
   slaReviewDays: number;
+  categories: string[]; // vendor categories offered on invite; editable by admins
+  retentionDays: number; // 0 = keep everything; otherwise purge files of rejected/expired vendors after N days
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -154,6 +156,8 @@ export const DEFAULT_SETTINGS: Settings = {
   inviteValidDays: 30,
   reminderAfterDays: 3,
   slaReviewDays: 2,
+  categories: ['Printing & signage', 'Store fixtures & displays', 'Marketing & promotions', 'Facilities & maintenance', 'IT & software', 'Logistics', 'Professional services'],
+  retentionDays: 0,
 };
 
 export interface Email {

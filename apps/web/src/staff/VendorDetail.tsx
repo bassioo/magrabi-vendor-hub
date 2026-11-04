@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Send, ShieldAlert, Eye, RefreshCw, XCircle, MessageSquare, Copy, Check, Download, KeyRound, Upload, Sparkles, Scale, Landmark, UserRound, Cog, Mail } from 'lucide-react';
-import { downloadSapSheet, useAddNote, useApprove, useAssign, useCallback_, useIssueCode, useRecheck, useReject, useResendInvite, useReturn, useReturnDraft, useSapSheet, useVendor, type Me } from '@/api/hooks';
+import { downloadAuditCsv, downloadSapSheet, useAddNote, useApprove, useAssign, useCallback_, useIssueCode, useRecheck, useReject, useResendInvite, useReturn, useReturnDraft, useSapSheet, useVendor, type Me } from '@/api/hooks';
 import { DocViewer } from '@/components/DocViewer';
 import { CheckRow } from '@/components/CheckRow';
 import { SourceChip, LevelChip } from '@/components/StatusChip';
@@ -94,7 +94,7 @@ export function VendorDetail() {
       )}
 
       {tab === 'sap' && <SapSheet vendor={vendor} canIssue={canApprove} />}
-      {tab === 'audit' && <AuditTrail entries={vendor.audit ?? []} />}
+      {tab === 'audit' && <AuditTrail entries={vendor.audit ?? []} vendorId={vendor.id} vendorName={vendor.name || vendor.email} />}
       {tab === 'emails' && <div className="mt-6"><EmailList vendorId={vendor.id} /></div>}
       {tab === 'review' && pending && (
         <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_1fr]">
@@ -237,7 +237,7 @@ function Notes({ vendor }: { vendor: Vendor }) {
         {(vendor.notes ?? []).map((n) => <li key={n.id} className="rounded-xl bg-greige/60 p-3"><div className="text-sm text-ink">{n.text}</div><div className="mt-1 text-[11px] text-muted">{n.by} · {fmtDateTime(n.at)}</div></li>)}
         {(vendor.notes ?? []).length === 0 && <li className="text-sm text-muted">No notes yet.</li>}
       </ul>
-      <div className="mt-3 flex gap-2"><input className="input" placeholder="Add a note for the team…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} aria-label="New note" /><button className="btn-secondary shrink-0" onClick={submit} disabled={!text.trim() || add.isPending}><Send size={14} /></button></div>
+      <div className="mt-3 flex gap-2"><input className="input" placeholder="Add a note for the team…" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} aria-label="New note" /><button className="btn-secondary shrink-0" onClick={submit} disabled={!text.trim() || add.isPending} aria-label="Add note"><Send size={14} /></button></div>
     </section>
   );
 }
@@ -279,11 +279,15 @@ const KIND: Record<AuditEntry['kind'], { Icon: typeof Upload; label: string; cls
   registry: { Icon: Landmark, label: 'Registry', cls: 'bg-greige text-body' }, review: { Icon: UserRound, label: 'Reviewer', cls: 'bg-pass-bg text-pass' }, system: { Icon: Cog, label: 'System', cls: 'bg-greige text-muted' }, email: { Icon: Mail, label: 'Email', cls: 'bg-greige text-muted' },
 };
 
-function AuditTrail({ entries }: { entries: AuditEntry[] }) {
+function AuditTrail({ entries, vendorId, vendorName }: { entries: AuditEntry[]; vendorId: string; vendorName: string }) {
   const sorted = [...entries].sort((a, b) => a.at.localeCompare(b.at));
+  const toast = useToast();
   return (
     <div className="card mt-6 p-5">
-      <div className="eyebrow">Audit trail</div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="eyebrow">Audit trail</div>
+        <button className="btn-secondary !py-1 text-xs" onClick={() => downloadAuditCsv(vendorId, vendorName).catch(() => toast('Export failed.', 'warn'))}><Download size={13} /> Export CSV</button>
+      </div>
       <ol className="mt-4">
         {sorted.map((e) => { const k = KIND[e.kind] ?? KIND.system; return (
           <li key={e.id} className="flex gap-4 border-t border-greige py-3 first:border-0">

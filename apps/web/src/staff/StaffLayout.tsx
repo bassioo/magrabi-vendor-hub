@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Inbox, Building2, Mail, BarChart3, SlidersHorizontal, Search, Menu, X, LogOut, ChevronDown, RotateCcw } from 'lucide-react';
+import { Inbox, Building2, Mail, BarChart3, SlidersHorizontal, Search, Menu, X, LogOut, ChevronDown, RotateCcw, Keyboard, LayoutDashboard } from 'lucide-react';
 import { Brand } from '@/components/Brand';
 import { NotificationsBell } from './NotificationsBell';
 import { useDemoReset, useLogout, useMe, useVendors } from '@/api/hooks';
@@ -16,6 +16,8 @@ export function StaffLayout() {
   const [drawer, setDrawer] = useState(false);
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
+  const pendingG = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const hits = useVendors({ status: 'all', q: q.trim().length > 1 ? q.trim() : '' });
   const queue = useVendors({ status: 'queue' });
@@ -23,11 +25,22 @@ export function StaffLayout() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === '/' && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) { e.preventDefault(); searchRef.current?.focus(); }
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement || (e.target as HTMLElement | null)?.isContentEditable;
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '/') { e.preventDefault(); searchRef.current?.focus(); return; }
+      if (e.key === '?') { e.preventDefault(); setShortcuts((s) => !s); return; }
+      if (e.key === 'Escape') { setShortcuts(false); setMenu(false); return; }
+      // two-key chords: g i → inbox, g d → dashboard, g o → outbox, g s → settings
+      if (e.key === 'g') { pendingG.current = Date.now(); return; }
+      if (Date.now() - pendingG.current < 1200) {
+        const go: Record<string, string> = { i: '/app/queue', d: '/app', o: '/app/outbox', v: '/app/sap', r: '/app/reports', s: '/app/settings' };
+        if (go[e.key]) { e.preventDefault(); navigate(go[e.key]); }
+        pendingG.current = 0;
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [navigate]);
   useEffect(() => { if (me.isError) navigate('/login', { replace: true, state: { from: window.location.pathname } }); }, [me.isError, navigate]);
 
   if (me.isLoading || !me.data) return <div className="p-8"><Skeleton className="h-8 w-48" /><Skeleton className="mt-6 h-40 w-full" /></div>;
@@ -42,7 +55,7 @@ export function StaffLayout() {
         <div className="flex items-center justify-between px-2"><NavLink to="/app"><Brand /></NavLink><button className="btn-ghost p-1 md:hidden" onClick={() => setDrawer(false)} aria-label="Close menu"><X size={18} /></button></div>
         <div className="mt-8 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Onboarding</div>
         <nav className="mt-2 flex flex-col gap-1">
-          <NavLink to="/app" end className={item}><Inbox size={17} /> Dashboard</NavLink>
+          <NavLink to="/app" end className={item}><LayoutDashboard size={17} /> Dashboard</NavLink>
           <NavLink to="/app/queue" className={item}><Inbox size={17} /> Inbox{queued > 0 && <span className="ms-auto rounded-full bg-gold px-1.5 text-[10px] font-semibold text-white">{queued}</span>}</NavLink>
           <NavLink to="/app/outbox" className={item}><Mail size={17} /> Outbox</NavLink>
         </nav>
@@ -82,11 +95,24 @@ export function StaffLayout() {
               {me.data.mode === 'demo' && <span className="hidden rounded-full border border-champagne bg-cream px-3 py-1 text-[11px] font-medium text-gold-deep md:inline">Demo · sample data</span>}
               <NotificationsBell />
               <div className="relative">
-                <button className="btn-ghost text-xs" onClick={() => setMenu((m) => !m)} aria-haspopup="menu"><span className="hidden sm:inline">{user.name}</span><ChevronDown size={14} /></button>
+                <button className="btn-ghost text-xs" onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} aria-label={`Account menu for ${user.name}`}><span className="hidden sm:inline">{user.name}</span><ChevronDown size={14} /></button>
                 {menu && (
-                  <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-champagne/60 bg-white shadow-card" role="menu" onMouseLeave={() => setMenu(false)}>
+                  <div className="absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-champagne/60 bg-white shadow-card" role="menu" onMouseLeave={() => setMenu(false)}>
                     <div className="px-3 py-2 text-xs text-muted">{user.email}</div>
-                    <button className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-cream" onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}><LogOut size={14} /> Sign out</button>
+                    <button className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-cream" role="menuitem" onClick={() => { setMenu(false); setShortcuts(true); }}><Keyboard size={14} /> Keyboard shortcuts <span className="ms-auto rounded border border-champagne px-1 text-[10px] text-muted">?</span></button>
+                    <button className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-cream" role="menuitem" onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}><LogOut size={14} /> Sign out</button>
+                  </div>
+                )}
+                {shortcuts && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/40 p-4" onClick={() => setShortcuts(false)}>
+                    <div className="card w-full max-w-sm p-5" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between"><div className="eyebrow">Keyboard shortcuts</div><button className="btn-ghost p-1" onClick={() => setShortcuts(false)} aria-label="Close"><X size={16} /></button></div>
+                      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                        {[['/', 'Search vendors'], ['g then d', 'Dashboard'], ['g then i', 'Inbox'], ['g then o', 'Outbox'], ['g then v', 'Vendors (SAP list)'], ['g then r', 'Reports'], ['g then s', 'Settings'], ['?', 'This list'], ['Esc', 'Close dialogs']].map(([k, v]) => (
+                          <div key={k} className="contents"><dt><kbd className="rounded border border-champagne bg-greige px-1.5 py-0.5 font-mono text-[11px] text-ink">{k}</kbd></dt><dd className="text-body">{v}</dd></div>
+                        ))}
+                      </dl>
+                    </div>
                   </div>
                 )}
               </div>

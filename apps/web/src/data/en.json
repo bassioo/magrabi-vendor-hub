@@ -165,6 +165,9 @@
     "viewSubmission": "View my submission",
     "titleRejected": "We can't",
     "titleRejectedAccent": "proceed this time.",
-    "rejectedText": "Procurement could not approve this registration. The reason was sent to your email. If you believe this is a mistake, reply to that email."
+    "rejectedText": "Procurement could not approve this registration. The reason was sent to your email. If you believe this is a mistake, reply to that email.",
+    "emailLink": "Email me my link",
+    "linkSent": "Sent to {email}",
+    "linkFailed": "We could not send the email just now. Please try again in a minute."
   }
 }

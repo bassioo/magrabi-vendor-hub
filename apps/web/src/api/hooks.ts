@@ -114,6 +114,13 @@ export const useMarkSeen = () => {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => post<{ ok: true }>('/staff/notifications/seen'), onSuccess: () => qc.invalidateQueries({ queryKey: keys.notifications }) });
 };
+export interface Health { ok: boolean; mode: Mode; version: string; time?: string; uptimeSeconds?: number; db?: string }
+export const useHealth = () => useQuery({ queryKey: ['health'], queryFn: () => get<Health>('/health'), staleTime: 30_000 });
+export const useRunRetention = () => {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => post<{ purgedVendors: number; purgedFiles: number }>('/staff/admin/retention/run', {}), onSuccess: () => qc.invalidateQueries({ queryKey: ['vendors'] }) });
+};
+export const downloadAuditCsv = (id: string, name: string) => download(`/staff/vendors/${id}/audit.csv`, `audit-${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`);
 export const useDemoReset = () => {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => get<{ ok: true }>('/staff/demo/reset'), onSuccess: () => qc.invalidateQueries() });
@@ -138,6 +145,7 @@ export const useDeleteDocument = (token: string) => {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (slotId: string) => del<{ ok: true }>(`/v/${token}/documents/${slotId}`), onSuccess: () => qc.invalidateQueries({ queryKey: keys.portal(token) }) });
 };
+export const useResendLink = (token: string) => useMutation({ mutationFn: () => post<{ ok: true }>(`/v/${token}/resend-link`, {}) });
 export const useSubmit = (token: string) => {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => post<{ vendor: Vendor }>(`/v/${token}/submit`, { confirm: true }), onSuccess: () => qc.invalidateQueries({ queryKey: keys.portal(token) }) });

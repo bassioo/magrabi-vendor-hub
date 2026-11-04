@@ -1,9 +1,12 @@
 import { Router, type Request } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { COUNTRY_ORDER, CATEGORIES, findDuplicates, type Country, type CountryProfile, type Settings, type Vendor } from '@vendorhub/shared';
+import { COUNTRY_ORDER, findDuplicates, type Country, type CountryProfile, type Settings, type Vendor } from '@vendorhub/shared';
 import { config } from '../config.js';
-import { addNote, getSettings, getUserById, getVendor, insertUser, listAudit, listCountryProfiles, listDocuments, listEmails, listNotes, listRegistryChecks, listSapVendors, listUsers, patchSettings, putCountryProfile, reviveProfile, updateUser, upsertSapVendor, type DB } from '../db/index.js';
+import { addNote, getSettings, getUserById, getUserLastSeen, getVendor, insertUser, listAudit, listCountryProfiles, listDocuments, listEmails, listNotes, listRegistryChecks, listSapVendors, listUsers, patchSettings, putCountryProfile, reviveProfile, setUserLastSeen, updateUser, upsertSapVendor, type DB } from '../db/index.js';
+import { runRetention } from '../jobs/retention.js';
+import { runHousekeeping } from '../jobs/reminders.js';
+import { housekeepingDeps } from '../jobs/deps.js';
 import { canSee, displayName, requireRole, requireStaff } from '../auth/index.js';
 import { parse } from '../lib/validate.js';
 import { badRequest, forbidden, notFound, unprocessable } from '../lib/errors.js';
@@ -14,8 +17,6 @@ import { draftReturnNote } from '../services/returnDraft.js';
 import { sapCsv, sapRows } from '../services/sapSheet.js';
 import { seedDemo } from '../db/seed.js';
 import { nowIso } from '../lib/time.js';
-
-const lastSeen = new Map<string, string>(); // notifications read marker per user (in-memory is fine: it is a convenience)
 
 export function staffRoutes(db: DB): Router {
   const r = Router();
@@ -47,6 +48,8 @@ export function staffRoutes(db: DB): Router {
   r.post('/vendors/invite', async (req, res, next) => {
     try {
       const body = parse(z.object({ email: z.string().email(), country: z.enum(COUNTRY_ORDER as [Country, ...Country[]]), category: z.string().min(2).max(80), lang: z.enum(['en', 'ar']).optional() }), req.body);
+      const categories = getSettings(db).categories;
+      if (categories.length && !categories.includes(body.category)) throw unprocessable('Unknown category', { category: `Choose one of: ${categories.join(', ')}` });
       if (req.user!.role === 'approver') throw forbidden('Approvers do not invite vendors (segregation of duties); ask a requester or an admin');
       if (!canSee(req.user!, { country: body.country })) throw forbidden('This market is outside your scope');
       const out = await wf.invite(db, req.user!, body);
@@ -60,7 +63,7 @@ export function staffRoutes(db: DB): Router {
       if (v.status === 'submitted') v = wf.openForReview(db, req.user!, v);
       const summary = wf.summaryFor(db, v);
       const sapMatch = findDuplicates(v, listSapVendors(db))[0];
-      res.json({ vendor: detail(v), summary, sapMatch, blockers: wf.approvalBlockers(db, req.user!, v), categories: CATEGORIES, inviteLink: wf.currentInviteLink(db, v.id) });
+      res.json({ vendor: detail(v), summary, sapMatch, blockers: wf.approvalBlockers(db, req.user!, v), categories: getSettings(db).categories, inviteLink: wf.currentInviteLink(db, v.id) });
     } catch (e) { next(e); }
   });
 
@@ -137,6 +140,15 @@ export function staffRoutes(db: DB): Router {
     } catch (e) { next(e); }
   });
 
+  r.get('/vendors/:id/audit.csv', (req, res, next) => {
+    try {
+      const v = loadVendor(req);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="audit-${(v.company.legalName || v.email).replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv"`);
+      res.send(toCsv(['At', 'Actor', 'Kind', 'Message', 'Detail'], listAudit(db, v.id).map((a) => [a.at, a.actor, a.kind, a.message, a.detail ?? ''])));
+    } catch (e) { next(e); }
+  });
+
   r.post('/vendors/:id/resend-invite', async (req, res, next) => {
     try { res.json({ link: wf.vendorLinkFor(await wf.resendInvite(db, req.user!, loadVendor(req).id)) }); } catch (e) { next(e); }
   });
@@ -199,7 +211,7 @@ export function staffRoutes(db: DB): Router {
   r.get('/settings', (_req, res) => res.json({ settings: getSettings(db) }));
   r.patch('/settings', requireRole('admin'), (req, res, next) => {
     try {
-      const body = parse(z.object({ requireCallback: z.boolean(), segregationOfDuties: z.boolean(), autoAssign: z.boolean(), bankLetterMaxMonths: z.number().int().min(1).max(24), inviteValidDays: z.number().int().min(1).max(365), reminderAfterDays: z.number().int().min(1).max(60), slaReviewDays: z.number().int().min(1).max(30) }).partial(), req.body) as Partial<Settings>;
+      const body = parse(z.object({ requireCallback: z.boolean(), segregationOfDuties: z.boolean(), autoAssign: z.boolean(), bankLetterMaxMonths: z.number().int().min(1).max(24), inviteValidDays: z.number().int().min(1).max(365), reminderAfterDays: z.number().int().min(1).max(60), slaReviewDays: z.number().int().min(1).max(30), categories: z.array(z.string().trim().min(1).max(80)).min(1).max(50), retentionDays: z.number().int().min(0).max(3650) }).partial(), req.body) as Partial<Settings>;
       res.json({ settings: patchSettings(db, body) });
     } catch (e) { next(e); }
   });
@@ -231,8 +243,14 @@ export function staffRoutes(db: DB): Router {
     res.send(toCsv(['Vendor', 'Email', 'Country', 'Category', 'Status', 'Invited', 'Submitted', 'Approved', 'Vendor code', 'Invited by', 'Assignee', 'Checks'], rows.map((v) => [v.name, v.email, v.country, v.category, v.status, v.invitedAt, v.submittedAt ?? '', v.approvedAt ?? '', v.vendorCode ?? '', v.invitedBy, v.assignee ?? '', v.summary.text])));
   });
 
-  r.get('/notifications', (req, res) => res.json(wf.notifications(db, req.user!, visible(req), lastSeen.get(req.user!.id) ?? req.user!.lastLoginAt ?? '')));
-  r.post('/notifications/seen', (req, res) => { lastSeen.set(req.user!.id, nowIso()); res.json({ ok: true }); });
+  r.get('/notifications', (req, res) => res.json(wf.notifications(db, req.user!, visible(req), getUserLastSeen(db, req.user!.id) ?? req.user!.lastLoginAt ?? '')));
+  r.post('/notifications/seen', (req, res) => { setUserLastSeen(db, req.user!.id, nowIso()); res.json({ ok: true }); });
+
+  // Admin "run now" for the scheduled jobs (the server runs them on its own timer too)
+  r.post('/admin/retention/run', requireRole('admin'), (_req, res, next) => { try { res.json(runRetention(db)); } catch (e) { next(e); } });
+  r.post('/admin/reminders/run', requireRole('admin'), async (_req, res, next) => {
+    try { const d = housekeepingDeps(db); res.json(await runHousekeeping(db, d.issueToken, d.send)); } catch (e) { next(e); }
+  });
 
   r.get('/demo/reset', (req, res, next) => {
     try {

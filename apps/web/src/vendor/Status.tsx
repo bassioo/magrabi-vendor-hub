@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Check, Mail, RotateCcw, FileText } from 'lucide-react';
+import { Check, Mail, RotateCcw, FileText, Send } from 'lucide-react';
+import { useResendLink } from '@/api/hooks';
 import { useLang, pick } from '@/lib/i18n';
 import { Headline } from '@/components/Headline';
 import { fmtDateTime } from '@/lib/format';
@@ -12,6 +13,7 @@ export function StatusTracker({ ctx }: { ctx: PortalCtx }) {
   const { t, lang } = useLang();
   const { vendor } = ctx.portal;
   const [showSubmission, setShowSubmission] = useState(false);
+  const resend = useResendLink(ctx.token);
   const idx = vendor.status === 'submitted' ? 0 : vendor.status === 'in_review' || vendor.status === 'returned' ? 1 : vendor.status === 'approved' ? 2 : vendor.status === 'code_issued' ? 3 : 0;
   const returned = vendor.status === 'returned';
   const rejected = vendor.status === 'rejected';
@@ -44,7 +46,13 @@ export function StatusTracker({ ctx }: { ctx: PortalCtx }) {
       {vendor.status === 'code_issued' && <div className="card mt-5 bg-cream p-6 text-base text-ink">{t('status.codeText', { code: vendor.vendorCode ?? '' })}</div>}
       {vendor.status === 'approved' && <div className="card mt-5 bg-cream p-6 text-base text-ink">{t('status.approvedText')}</div>}
       {(vendor.status === 'submitted' || vendor.status === 'in_review') && <div className="card mt-5 p-6"><h2 className="flex items-center gap-2 text-lg"><Mail size={16} className="text-gold-deep" /> {t('status.whatNext')}</h2><p className="mt-2 text-sm text-body">{t('status.nextText', { email: vendor.email })}</p></div>}
-      {!rejected && <button className="btn-secondary mt-5" onClick={() => setShowSubmission(true)}><FileText size={14} /> {t('status.viewSubmission')}</button>}
+      {!rejected && (
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <button className="btn-secondary" onClick={() => setShowSubmission(true)}><FileText size={14} /> {t('status.viewSubmission')}</button>
+          <button className="btn-ghost" disabled={resend.isPending || resend.isSuccess} onClick={() => resend.mutate()}><Send size={14} /> {resend.isSuccess ? t('status.linkSent', { email: vendor.email }) : t('status.emailLink')}</button>
+        </div>
+      )}
+      {resend.isError && <div className="mt-2 text-xs text-fail">{t('status.linkFailed')}</div>}
     </div>
   );
 }

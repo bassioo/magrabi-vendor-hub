@@ -173,4 +173,80 @@ describe('Vendor Hub API', () => {
     const imp = await request(app).post('/api/staff/sap-vendors/import').set('Cookie', admin).attach('file', Buffer.from('code,name,country,vat_number\n400999,Test Import Co,KSA,300000000000003\n'), 'sap.csv');
     expect(imp.body.imported).toBe(1);
   });
+
+  it('phase 2: settings categories and retention, custom category on invite', async () => {
+    const admin = await login('admin@magrabi.example');
+    const bad = await request(app).patch('/api/staff/settings').set('Cookie', admin).send({ categories: [] });
+    expect(bad.status).toBe(400);
+    const s = await request(app).patch('/api/staff/settings').set('Cookie', admin).send({ categories: ['Eyewear supplies', 'Logistics'], retentionDays: 30 });
+    expect(s.body.settings.categories).toEqual(['Eyewear supplies', 'Logistics']);
+    expect(s.body.settings.retentionDays).toBe(30);
+    const no = await request(app).post('/api/staff/vendors/invite').set('Cookie', hana).send({ email: 'cat@y.example', country: 'KSA', category: 'Printing & signage' });
+    expect(no.status).toBe(422);
+    expect(no.body.error.fields.category).toMatch(/Eyewear/);
+    const ok = await request(app).post('/api/staff/vendors/invite').set('Cookie', hana).send({ email: 'cat@y.example', country: 'KSA', category: 'Eyewear supplies' });
+    expect(ok.status).toBe(200);
+    const d = await request(app).get(`/api/staff/vendors/${ok.body.vendor.id}`).set('Cookie', hana);
+    expect(d.body.categories).toEqual(['Eyewear supplies', 'Logistics']);
+    expect((await request(app).get('/api/auth/me').set('Cookie', hana)).body.settings.retentionDays).toBe(30);
+  });
+
+  it('phase 2: vendor can ask for their link again, limited to 3 per hour', async () => {
+    const r1 = await request(app).post(`/api/v/${DEMO_TOKENS.alnoor}/resend-link`);
+    expect(r1.body.ok).toBe(true);
+    const mail = await request(app).get('/api/staff/emails').set('Cookie', deena);
+    const last = mail.body.rows.find((e: { subject: string }) => e.subject === 'Your MAGRABi registration link');
+    expect(last).toBeDefined();
+    expect(last.bodyEn).toContain(`/v/${DEMO_TOKENS.alnoor}`);
+    await request(app).post(`/api/v/${DEMO_TOKENS.alnoor}/resend-link`);
+    await request(app).post(`/api/v/${DEMO_TOKENS.alnoor}/resend-link`);
+    expect((await request(app).post(`/api/v/${DEMO_TOKENS.alnoor}/resend-link`)).status).toBe(429);
+  });
+
+  it('phase 2: notifications seen marker persists in the database', async () => {
+    const before = await request(app).get('/api/staff/notifications').set('Cookie', deena);
+    expect(before.body.unread).toBeGreaterThan(0);
+    await request(app).post('/api/staff/notifications/seen').set('Cookie', deena);
+    const after = await request(app).get('/api/staff/notifications').set('Cookie', deena);
+    expect(after.body.unread).toBe(0);
+    const row = db.prepare("SELECT last_seen_at FROM users WHERE email = 'deena@magrabi.example'").get() as { last_seen_at: string | null };
+    expect(row.last_seen_at).toBeTruthy();
+  });
+
+  it('phase 2: audit trail CSV, health, and the origin check', async () => {
+    const csv = await request(app).get('/api/staff/vendors/v-nile/audit.csv').set('Cookie', deena);
+    expect(csv.headers['content-type']).toMatch(/text\/csv/);
+    expect(csv.text).toMatch(/Duplicate check/);
+    expect((await request(app).get('/api/staff/vendors/v-nile/audit.csv')).status).toBe(401);
+    const h = await request(app).get('/api/health');
+    expect(h.body.db).toBe('ok');
+    expect(typeof h.body.uptimeSeconds).toBe('number');
+    const bad = await request(app).post('/api/staff/vendors/v-nile/notes').set('Cookie', deena).set('Origin', 'https://evil.example').send({ text: 'x' });
+    expect(bad.status).toBe(403);
+    expect(bad.body.error.code).toBe('bad_origin');
+    const good = await request(app).post('/api/staff/vendors/v-nile/notes').set('Cookie', deena).set('Origin', 'http://localhost:5173').send({ text: 'origin ok' });
+    expect(good.status).toBe(200);
+  });
+
+  it('phase 2: retention purges files of old rejected vendors; reminders run on demand', async () => {
+    const admin = await login('admin@magrabi.example');
+    // Bright has seeded documents; reject it, backdate it, and run retention with a 30-day policy (set above)
+    const rej = await request(app).post('/api/staff/vendors/v-bright/reject').set('Cookie', deena).send({ reason: 'Test retention' });
+    expect(rej.status).toBe(200);
+    db.prepare("UPDATE vendors SET updated_at = '2000-01-01T00:00:00.000Z' WHERE id = 'v-bright'").run();
+    const before = db.prepare("SELECT COUNT(*) n FROM documents WHERE vendor_id = 'v-bright' AND storage_key <> ''").get() as { n: number };
+    expect(before.n).toBeGreaterThan(0);
+    const run = await request(app).post('/api/staff/admin/retention/run').set('Cookie', admin);
+    expect(run.status).toBe(200);
+    expect(run.body.purgedVendors).toBe(1);
+    expect(run.body.purgedFiles).toBe(before.n);
+    const after = db.prepare("SELECT COUNT(*) n FROM documents WHERE vendor_id = 'v-bright' AND storage_key <> ''").get() as { n: number };
+    expect(after.n).toBe(0);
+    expect((await request(app).get('/api/staff/vendors/v-bright/audit.csv').set('Cookie', deena)).text).toMatch(/retention policy/);
+    expect((await request(app).post('/api/staff/admin/retention/run').set('Cookie', deena)).status).toBe(403);
+    const rem = await request(app).post('/api/staff/admin/reminders/run').set('Cookie', admin);
+    expect(rem.status).toBe(200);
+    expect(typeof rem.body.reminded).toBe('number');
+    expect(typeof rem.body.expired).toBe('number');
+  });
 });

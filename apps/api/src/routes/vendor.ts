@@ -21,6 +21,7 @@ import { parse } from '../lib/validate.js';
 import { lookupCompany } from '../services/registries.js';
 import { processUpload } from '../services/extraction.js';
 import { submit } from '../services/workflow.js';
+import { sendEmail, templates } from '../services/email.js';
 import { nowIso } from '../lib/time.js';
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -162,6 +163,22 @@ export function vendorRoutes(db: DB): Router {
       if (!editable(v)) throw unprocessable('Already submitted');
       const out = await submit(db, v);
       res.json({ vendor: withDocs(out) });
+    } catch (e) { next(e); }
+  });
+
+  // Vendor asks for their own link again (e.g. lost the email). Same token, no new one. 3 per hour per token.
+  const resendLog = new Map<string, number[]>();
+  r.post('/:token/resend-link', async (req, res, next) => {
+    try {
+      const v = load(req);
+      const now = Date.now();
+      const recent = (resendLog.get(req.params.token) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+      if (recent.length >= 3) throw new HttpError(429, 'too_many', 'The link was sent recently. Please check your inbox, including spam, and try again later.');
+      recent.push(now);
+      resendLog.set(req.params.token, recent);
+      await sendEmail(db, templates.resendLink(v, req.params.token));
+      addAudit(db, v.id, 'Vendor', 'email', `Vendor asked for their registration link to be re-sent to ${v.email}`);
+      res.json({ ok: true });
     } catch (e) { next(e); }
   });
 

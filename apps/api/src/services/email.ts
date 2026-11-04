@@ -39,6 +39,11 @@ export const templates = {
     bodyEn: `Hello,\n\nMAGRABi has invited you to register as a supplier (${v.category}). Use the link below. It takes about 10 minutes and you can save and come back.\n\n${vendorLink(token)}\n\nThe link is valid until ${v.inviteExpiresAt.slice(0, 10)}.\n\nKind regards,\n${first(by)} · MAGRABi Procurement`,
     bodyAr: `مرحبًا،\n\nدعتكم مغربي للتسجيل كمورّد (${v.category}). استخدموا الرابط أدناه. يستغرق الأمر حوالي 10 دقائق ويمكنكم الحفظ والعودة لاحقًا.\n\n${vendorLink(token)}\n\nالرابط صالح حتى ${v.inviteExpiresAt.slice(0, 10)}.\n\nمع أطيب التحيات،\nالمشتريات، مغربي`,
   }),
+  resendLink: (v: Vendor, token: string): Outgoing => ({
+    to: v.email, vendorId: v.id, kind: 'invite', subject: 'Your MAGRABi registration link',
+    bodyEn: `Hello,\n\nHere is your MAGRABi supplier registration link again. Everything you entered so far is saved.\n\n${vendorLink(token)}\n\nKind regards,\nMAGRABi Procurement`,
+    bodyAr: `مرحبًا،\n\nإليكم رابط تسجيلكم كمورّد لدى مغربي مرة أخرى. كل ما أدخلتموه محفوظ.\n\n${vendorLink(token)}\n\nمع أطيب التحيات،\nالمشتريات، مغربي`,
+  }),
   reminder: (v: Vendor, token: string): Outgoing => ({
     to: v.email, vendorId: v.id, kind: 'reminder', subject: 'MAGRABi · Reminder: your vendor registration is waiting',
     bodyEn: `Hello,\n\nA quick reminder that your MAGRABi supplier registration has not been submitted yet. Everything you entered so far is saved.\n\n${vendorLink(token)}\n\nKind regards,\nMAGRABi Procurement`,

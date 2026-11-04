@@ -3,15 +3,17 @@ import { Copy, ExternalLink, Link2, Check } from 'lucide-react';
 import { Modal } from '@/components/Modal';
 import { ErrorBox } from '@/components/ErrorBox';
 import { useToast } from '@/components/Toast';
-import { useInvite } from '@/api/hooks';
+import { useInvite, useMe } from '@/api/hooks';
 import { CATEGORIES, COUNTRIES, COUNTRY_ORDER, type Country, type Lang, type Vendor } from '@vendorhub/shared';
 
 export function InviteModal({ onClose }: { onClose: () => void }) {
   const invite = useInvite();
+  const me = useMe();
+  const categories = me.data?.settings.categories?.length ? me.data.settings.categories : [...CATEGORIES];
   const toast = useToast();
   const [email, setEmail] = useState('');
   const [country, setCountry] = useState<Country>('KSA');
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState(categories[0]);
   const [lang, setLang] = useState<Lang>('en');
   const [result, setResult] = useState<{ vendor: Vendor; link: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -26,7 +28,7 @@ export function InviteModal({ onClose }: { onClose: () => void }) {
           <div><label className="label" htmlFor="inv-email">Vendor email</label><input id="inv-email" className="input" type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder="accounts@supplier.com" /></div>
           <div className="grid gap-4 md:grid-cols-2">
             <div><label className="label" htmlFor="inv-country">Country</label><select id="inv-country" className="input" value={country} onChange={(e) => setCountry(e.target.value as Country)}>{COUNTRY_ORDER.map((c) => <option key={c} value={c}>{COUNTRIES[c].flag} {COUNTRIES[c].name}</option>)}</select></div>
-            <div><label className="label" htmlFor="inv-cat">Category</label><select id="inv-cat" className="input" value={category} onChange={(e) => setCategory(e.target.value)}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></div>
+            <div><label className="label" htmlFor="inv-cat">Category</label><select id="inv-cat" className="input" value={category} onChange={(e) => setCategory(e.target.value)}>{categories.map((c) => <option key={c}>{c}</option>)}</select></div>
           </div>
           <div><label className="label">Email language</label><div className="flex gap-2">{(['en', 'ar'] as Lang[]).map((l) => <button type="button" key={l} className={`rounded-xl border px-3 py-1.5 text-sm ${lang === l ? 'border-gold bg-cream text-ink' : 'border-champagne/70 text-body'}`} onClick={() => setLang(l)}>{l === 'en' ? 'English' : 'العربية'}</button>)}</div></div>
           <p className="text-xs text-muted">The vendor sees the {COUNTRIES[country].name} checklist: {COUNTRIES[country].checklist.map((i) => i.label.toLowerCase()).join(', ')}.{!COUNTRIES[country].tax.applicable && ' No VAT in this market, so the tax number is optional.'}</p>

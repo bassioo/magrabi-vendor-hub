@@ -20,6 +20,10 @@ export function openDatabase(dbPath = config.dbPath): DB {
   // additive migrations (SQLite has no IF NOT EXISTS for columns)
   const cols = (db.prepare('PRAGMA table_info(vendors)').all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes('invite_token_enc')) db.exec('ALTER TABLE vendors ADD COLUMN invite_token_enc TEXT');
+  const userCols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
+  if (!userCols.includes('last_seen_at')) db.exec('ALTER TABLE users ADD COLUMN last_seen_at TEXT');
+  const docCols = (db.prepare('PRAGMA table_info(documents)').all() as { name: string }[]).map((c) => c.name);
+  if (!docCols.includes('purged_at')) db.exec('ALTER TABLE documents ADD COLUMN purged_at TEXT');
   ensureDefaults(db);
   return db;
 }
@@ -85,6 +89,9 @@ export function updateUser(db: DB, id: string, patch: Partial<Pick<User, 'name' 
   db.prepare('UPDATE users SET name = ?, role = ?, markets = ?, active = ?, last_login_at = ? WHERE id = ?').run(next.name, next.role, next.markets === 'all' ? 'all' : JSON.stringify(next.markets), next.active ? 1 : 0, next.lastLoginAt ?? null, id);
   return getUserById(db, id)!;
 }
+/** Notifications read marker, persisted per user (survives restarts). */
+export function getUserLastSeen(db: DB, id: string): string | undefined { const r = db.prepare('SELECT last_seen_at FROM users WHERE id = ?').get(id) as { last_seen_at: string | null } | undefined; return r?.last_seen_at ?? undefined; }
+export function setUserLastSeen(db: DB, id: string, at: string): void { db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ?').run(at, id); }
 export function insertSession(db: DB, tokenHash: string, userId: string, expiresAt: string): void { db.prepare('INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(tokenHash, userId, nowIso(), expiresAt); }
 export function getSessionUser(db: DB, tokenHash: string): User | undefined {
   const r = db.prepare('SELECT user_id, expires_at FROM sessions WHERE id = ?').get(tokenHash) as { user_id: string; expires_at: string } | undefined;
@@ -158,6 +165,16 @@ export function insertDocument(db: DB, d: Omit<DocumentRecord, 'id' | 'version'>
   return getDocument(db, id)!;
 }
 export function removeCurrentDocument(db: DB, vendorId: string, slotId: string): void { db.prepare('UPDATE documents SET current = 0 WHERE vendor_id = ? AND slot_id = ?').run(vendorId, slotId); }
+/** Every stored file of a vendor (all versions) that has not been purged yet. */
+export function listStoredFiles(db: DB, vendorId: string): { id: string; storageKey: string }[] {
+  return (db.prepare("SELECT id, storage_key FROM documents WHERE vendor_id = ? AND storage_key <> '' AND purged_at IS NULL").all(vendorId) as { id: string; storage_key: string }[]).map((r) => ({ id: r.id, storageKey: r.storage_key }));
+}
+export function markDocumentPurged(db: DB, id: string, at: string): void { db.prepare("UPDATE documents SET storage_key = '', purged_at = ? WHERE id = ?").run(at, id); }
+/** Vendors whose files fall under the retention policy: rejected or expired, untouched for more than `days`. */
+export function listRetentionCandidates(db: DB, days: number): Vendor[] {
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  return (db.prepare("SELECT * FROM vendors WHERE status IN ('rejected','expired') AND updated_at < ?").all(cutoff) as VendorRow[]).map(toVendor).filter((v) => listStoredFiles(db, v.id).length > 0);
+}
 
 /* ---------- audit, notes, registry checks ---------- */
 export function addAudit(db: DB, vendorId: string, actor: string, kind: AuditEntry['kind'], message: string, detail?: string, at = nowIso()): AuditEntry {

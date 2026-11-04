@@ -17,7 +17,7 @@ import { VendorApp } from '@/vendor/VendorApp';
 export default function App() {
   const navigate = useNavigate();
   useEffect(() => {
-    setUnauthorizedHandler(() => navigate('/login', { replace: true, state: { from: window.location.pathname } }));
+    setUnauthorizedHandler(() => navigate('/login', { replace: true, state: { from: window.location.pathname, expired: window.location.pathname.startsWith('/app') } }));
     return () => setUnauthorizedHandler(null);
   }, [navigate]);
   return (

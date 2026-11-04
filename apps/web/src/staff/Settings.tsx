@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useOutletContext, useParams } from 'react-router-dom';
-import { ShieldCheck, UserRound, Globe2, Upload, Info, Plus, Trash2, ArrowUp, ArrowDown, Save } from 'lucide-react';
-import { useCountries, useCreateUser, useSapImport, useSaveCountry, useSettings, useUpdateSettings, useUpdateUser, useUsers, type Me } from '@/api/hooks';
+import { ShieldCheck, UserRound, Globe2, Upload, Info, Plus, Trash2, ArrowUp, ArrowDown, Save, Tags, Archive, ExternalLink } from 'lucide-react';
+import { useCountries, useCreateUser, useHealth, useRunRetention, useSapImport, useSaveCountry, useSettings, useUpdateSettings, useUpdateUser, useUsers, type Me } from '@/api/hooks';
 import { useToast } from '@/components/Toast';
 import { ErrorBox } from '@/components/ErrorBox';
 import { Skeleton } from '@/components/Skeleton';
 import { Forbidden } from '@/app/NotFound';
-import { COUNTRY_ORDER, IBAN_SPECS, type ChecklistItem, type Country, type CountryProfile, type Role, type Settings as SettingsT, type User } from '@vendorhub/shared';
+import { CATEGORIES, COUNTRY_ORDER, IBAN_SPECS, type ChecklistItem, type Country, type CountryProfile, type Role, type Settings as SettingsT, type User } from '@vendorhub/shared';
 
 function Toggle({ checked, onChange, label, help, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; help: string; disabled?: boolean }) {
   return (
@@ -59,6 +59,7 @@ function Policies({ admin }: { admin: boolean }) {
     </div>
   );
   return (
+    <div className="space-y-5">
     <section className="card p-5">
       <div className="eyebrow">Approval policies</div>
       {!admin && <p className="mt-1 text-xs text-muted">Read only. Administrators can change these.</p>}
@@ -72,6 +73,66 @@ function Policies({ admin }: { admin: boolean }) {
         {num('slaReviewDays', 'Review target', 'Submissions older than this show as overdue.', [1, 2, 3, 5], 'days')}
       </div>
       <ErrorBox error={update.error} className="mt-3" />
+    </section>
+    <Categories admin={admin} value={s.categories?.length ? s.categories : [...CATEGORIES]} onSave={(list) => set({ categories: list }, 'Categories saved.')} saving={update.isPending} />
+    <Retention admin={admin} days={s.retentionDays ?? 0} onSave={(d) => set({ retentionDays: d }, d === 0 ? 'Files are kept forever.' : `Rejected and expired vendor files are purged after ${d} days.`)} />
+    </div>
+  );
+}
+
+function Categories({ admin, value, onSave, saving }: { admin: boolean; value: string[]; onSave: (list: string[]) => void; saving: boolean }) {
+  const [list, setList] = useState<string[]>(value);
+  const [draft, setDraft] = useState('');
+  useEffect(() => setList(value), [value]);
+  const dirty = JSON.stringify(list) !== JSON.stringify(value);
+  const move = (i: number, d: -1 | 1) => { const j = i + d; if (j < 0 || j >= list.length) return; const l = [...list]; [l[i], l[j]] = [l[j], l[i]]; setList(l); };
+  return (
+    <section className="card p-5">
+      <div className="flex items-center gap-2"><Tags size={16} className="text-gold-deep" aria-hidden="true" /><div className="eyebrow">Vendor categories</div></div>
+      <p className="mt-1 text-xs text-muted">Offered when inviting a vendor and shown on the vendor's welcome screen. Order is the order in the list.</p>
+      <ol className="mt-3 space-y-1.5">
+        {list.map((c, i) => (
+          <li key={`${c}-${i}`} className="flex items-center gap-2">
+            <span className="w-5 text-right text-[11px] text-muted">{i + 1}</span>
+            <input className="input !py-1.5 text-sm" disabled={!admin} value={c} onChange={(e) => setList(list.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Category ${i + 1}`} />
+            {admin && (
+              <>
+                <button className="rounded p-1 hover:bg-greige" onClick={() => move(i, -1)} aria-label={`Move ${c} up`}><ArrowUp size={12} /></button>
+                <button className="rounded p-1 hover:bg-greige" onClick={() => move(i, 1)} aria-label={`Move ${c} down`}><ArrowDown size={12} /></button>
+                <button className="rounded p-1.5 text-fail hover:bg-fail-bg" onClick={() => setList(list.filter((_, j) => j !== i))} aria-label={`Remove ${c}`}><Trash2 size={14} /></button>
+              </>
+            )}
+          </li>
+        ))}
+      </ol>
+      {admin && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input className="input !w-64 !py-1.5 text-sm" placeholder="New category" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && draft.trim()) { setList([...list, draft.trim()]); setDraft(''); } }} aria-label="New category" />
+          <button className="btn-secondary !py-1.5 text-xs" disabled={!draft.trim()} onClick={() => { setList([...list, draft.trim()]); setDraft(''); }}><Plus size={13} /> Add</button>
+          <span className="ms-auto text-xs text-muted">{dirty ? 'Unsaved changes' : ''}</span>
+          <button className="btn-primary !py-1.5 text-xs" disabled={!dirty || saving || list.some((c) => !c.trim())} onClick={() => onSave(list.map((c) => c.trim()))}><Save size={13} /> Save categories</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Retention({ admin, days, onSave }: { admin: boolean; days: number; onSave: (d: number) => void }) {
+  const run = useRunRetention();
+  const toast = useToast();
+  const [val, setVal] = useState(days);
+  useEffect(() => setVal(days), [days]);
+  return (
+    <section className="card p-5">
+      <div className="flex items-center gap-2"><Archive size={16} className="text-gold-deep" aria-hidden="true" /><div className="eyebrow">Retention</div></div>
+      <p className="mt-1 text-xs text-muted">How long uploaded documents of rejected or expired vendors are kept. 0 keeps everything. Approved vendors are never purged; the audit trail is always kept.</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input type="number" min={0} max={3650} className="input !w-28 !py-1.5 text-sm" disabled={!admin} value={val} onChange={(e) => setVal(Math.max(0, Number(e.target.value) || 0))} aria-label="Retention days" />
+        <span className="text-sm text-body">days {val === 0 && <span className="text-muted">(keep forever)</span>}</span>
+        {admin && <button className="btn-secondary !py-1.5 text-xs" disabled={val === days} onClick={() => onSave(val)}><Save size={13} /> Save</button>}
+        {admin && <button className="btn-ghost ms-auto !py-1.5 text-xs" disabled={run.isPending || days === 0} title={days === 0 ? 'Set a number of days first' : undefined} onClick={() => run.mutate(undefined, { onSuccess: (r) => toast(`Retention run: ${r.purgedVendors} vendor${r.purgedVendors === 1 ? '' : 's'}, ${r.purgedFiles} file${r.purgedFiles === 1 ? '' : 's'} purged.`, 'info') })}><Archive size={13} /> Run retention now</button>}
+      </div>
+      <ErrorBox error={run.error} className="mt-3" />
     </section>
   );
 }
@@ -198,14 +259,20 @@ function SapImport() {
 }
 
 function About({ me }: { me: Me }) {
+  const health = useHealth();
+  const h = health.data;
+  const uptime = h?.uptimeSeconds !== undefined ? (h.uptimeSeconds < 3600 ? `${Math.round(h.uptimeSeconds / 60)} min` : h.uptimeSeconds < 86400 ? `${(h.uptimeSeconds / 3600).toFixed(1)} h` : `${(h.uptimeSeconds / 86400).toFixed(1)} days`) : undefined;
   return (
     <section className="card p-5">
       <div className="eyebrow">About</div>
       <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-        <div><dt className="text-[11px] text-muted">Product</dt><dd className="text-ink">MAGRABi Vendor Hub</dd></div>
-        <div><dt className="text-[11px] text-muted">Mode</dt><dd className="text-ink">{me.mode === 'demo' ? 'Demo · sample data, simulated registries' : 'Live'}</dd></div>
+        <div><dt className="text-[11px] text-muted">Product</dt><dd className="text-ink">MAGRABi Vendor Hub {h?.version ? <span className="font-mono text-xs text-muted">v{h.version}</span> : null}</dd></div>
+        <div><dt className="text-[11px] text-muted">Mode</dt><dd className="text-ink">{(h?.mode ?? me.mode) === 'demo' ? 'Demo · sample data, simulated registries' : 'Live'}</dd></div>
         <div><dt className="text-[11px] text-muted">Signed in as</dt><dd className="text-ink">{me.user.name} · {me.user.role}</dd></div>
         <div><dt className="text-[11px] text-muted">Principle</dt><dd className="text-ink">AI reads. Rules check. Registries confirm. A person decides.</dd></div>
+        <div><dt className="text-[11px] text-muted">API</dt><dd className="text-ink">{health.isLoading ? 'Checking…' : h?.ok ? <span className="text-pass">Healthy</span> : <span className="text-fail">Unreachable</span>}{uptime ? <span className="text-muted"> · up {uptime}</span> : null}</dd></div>
+        <div><dt className="text-[11px] text-muted">Database</dt><dd className="font-mono text-xs text-ink">{h?.db ?? '—'}</dd></div>
+        <div className="md:col-span-2"><dt className="text-[11px] text-muted">Source code</dt><dd><a className="inline-flex items-center gap-1 text-gold-deep underline" href="https://github.com/bassioo/magrabi-vendor-hub" target="_blank" rel="noreferrer">github.com/bassioo/magrabi-vendor-hub <ExternalLink size={12} aria-hidden="true" /></a></dd></div>
       </dl>
     </section>
   );

@@ -31,6 +31,7 @@ All `/api/staff/**` routes require a session. Role rules: admin = everything; ap
 | GET | /staff/vendors/:id/sap-sheet | `?format=json|csv` | rows `[field, value][]` or CSV download |
 | POST | /staff/vendors/:id/issue-code | `{ code }` | `{ vendor }` · adds to sap_vendors, emails vendor |
 | POST | /staff/vendors/:id/resend-invite | | `{ link }` · new token, old one invalid |
+| GET | /staff/vendors/:id/audit.csv | | CSV download of the audit trail (At, Actor, Kind, Message, Detail) |
 | POST | /staff/vendors/:id/recheck | | `{ registryChecks }` · re-runs registry + duplicate + sanctions |
 | GET | /staff/sap-vendors | `?q=` | `{ rows: SapVendor[] }` |
 | POST | /staff/sap-vendors/import | multipart `file` (CSV: code,name,name_ar,country,reg_number,vat_number,iban) | `{ imported, skipped }` admin |
@@ -39,12 +40,14 @@ All `/api/staff/**` routes require a session. Role rules: admin = everything; ap
 | POST | /staff/users | `{ email, name, role, markets }` | `{ user }` admin |
 | PATCH | /staff/users/:id | `{ name?, role?, markets?, active? }` | `{ user }` admin |
 | GET | /staff/settings | | `{ settings }` |
-| PATCH | /staff/settings | `Partial<Settings>` | `{ settings }` admin |
+| PATCH | /staff/settings | `Partial<Settings>` | `{ settings }` admin · includes `categories: string[]` (1–50; invite categories must come from this list) and `retentionDays` (0 = keep forever, else purge files of rejected/expired vendors after N days) |
 | GET | /staff/countries | | `{ rows: CountryProfile[] }` |
 | PUT | /staff/countries/:code | `CountryProfile` | `{ profile }` admin (validated) |
 | GET | /staff/reports/export | `?status=` | CSV of the queue |
 | GET | /staff/notifications | | `{ rows: (AuditEntry & {vendorName})[], unread }` · events by others since `lastSeenAt` |
-| POST | /staff/notifications/seen | | `{ ok }` |
+| POST | /staff/notifications/seen | | `{ ok }` · marker persisted per user (`users.last_seen_at`) |
+| POST | /staff/admin/retention/run | | `{ purgedVendors, purgedFiles, retentionDays }` admin · runs the daily retention job now |
+| POST | /staff/admin/reminders/run | | `{ reminded, expired }` admin · runs the hourly reminder/expiry job now |
 | GET | /staff/demo/reset | | **demo only** reseeds the database |
 
 ## Vendor (token in path, no login)
@@ -58,6 +61,13 @@ All `/api/staff/**` routes require a session. Role rules: admin = everything; ap
 | DELETE | /v/:token/documents/:slotId | | `{ ok }` |
 | POST | /v/:token/submit | `{ confirm: true }` | `{ vendor }` · requires all slots pass; runs registry/duplicate/sanctions async; emails vendor |
 | GET | /v/:token/status | | `{ vendor, timeline }` |
+| POST | /v/:token/resend-link | | `{ ok: true }` · emails the vendor their current link again (same token); 3 per hour per token, then 429 |
+
+## Health
+`GET /api/health` → `{ ok, db: 'ok'|'error', mode, version, time, uptimeSeconds }` (503 when the database query fails).
+
+## Origin check
+State-changing calls (POST/PATCH/PUT/DELETE under `/api`) that carry an `Origin` header must match `PUBLIC_URL`, the dev web origin, or the request host; otherwise 403 `{ error: { code: 'bad_origin' } }`. Requests without `Origin` (curl, server-to-server) pass.
 
 ## Files
 `GET /files/:documentId` streams the stored file. Allowed for a staff session, or for the vendor whose token is passed as `?t=` (vendor token).

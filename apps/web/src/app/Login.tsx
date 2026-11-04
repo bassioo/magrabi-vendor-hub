@@ -21,7 +21,9 @@ export function Login() {
   const [sent, setSent] = useState(false);
   const request = useRequestLink();
   const demo = useDemoLogin();
-  const from = (location.state as { from?: string } | null)?.from;
+  const state = location.state as { from?: string; expired?: boolean } | null;
+  const from = state?.from;
+  const expired = !!state?.expired;
   const dest = from && from.startsWith('/app') ? from : '/app';
   if (me.data?.user) { navigate(dest, { replace: true }); return null; }
   const isDemo = me.data?.mode === 'demo' || (me.error instanceof ApiError && me.error.extra.mode === 'demo');
@@ -32,6 +34,7 @@ export function Login() {
         <div className="card p-8">
           <div className="eyebrow">Procurement</div>
           <h1 className="mt-1 text-3xl">Sign in, <span className="accent">no password.</span></h1>
+          {expired && <div className="mt-3 rounded-xl bg-flag-bg px-3 py-2 text-sm text-flag" role="status">Your session expired. Sign in again to continue.</div>}
           {sent ? (
             <div className="mt-6 rounded-xl bg-pass-bg p-4 text-sm text-pass">
               <Mail size={16} className="mb-1 inline" /> If <b>{email}</b> belongs to a MAGRABi user, a sign-in link is on its way. It is valid for 15 minutes.
